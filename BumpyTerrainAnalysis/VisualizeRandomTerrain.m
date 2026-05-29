@@ -177,12 +177,103 @@ grid on;
 sgtitle(sprintf('Randomized Terrain: %d chunks, +/-%d%% property variation, 0-%dmm surface bumps', ...
     n_chunks_y * n_chunks_x, variation_pct, surface_z_max), 'FontSize', 13, 'FontWeight', 'bold');
 
-% Save
+% Save combined figure
 output_dir = 'Results';
 savefig(gcf, fullfile(output_dir, 'RandomizedTerrain.fig'));
 exportgraphics(gcf, fullfile(output_dir, 'RandomizedTerrain.png'), 'Resolution', 150);
 close(gcf);
-fprintf('\nVisualization saved: %s\n', fullfile(output_dir, 'RandomizedTerrain.png'));
+fprintf('\nCombined visualization saved: %s\n', fullfile(output_dir, 'RandomizedTerrain.png'));
+
+%% === INDIVIDUAL FIGURES ===
+fprintf('\nGenerating individual figures...\n');
+
+terrain_names = {terrains(1).name, terrains(2).name, terrains(3).name};
+
+for ti = 1:3
+    base_er = terrains(ti).er;
+    base_sigma = terrains(ti).sigma;
+    tname = terrain_names{ti};
+    
+    % --- Individual: Permittivity along track ---
+    fig = figure('Visible', 'off', 'Position', [100 100 900 350]);
+    plot(y_centers/1000, terrains(ti).er_along_track, '-', 'Color', [0.2 0.5 0.8], 'LineWidth', 1);
+    hold on;
+    yline(base_er, 'r--', 'LineWidth', 1.5);
+    yline(base_er * (1 + variation_pct/100), 'r:', 'LineWidth', 1);
+    yline(base_er * (1 - variation_pct/100), 'r:', 'LineWidth', 1);
+    for oi = 1:length(obj_y_centers)
+        patch([obj_y_centers(oi)-obj_y_half, obj_y_centers(oi)+obj_y_half, ...
+               obj_y_centers(oi)+obj_y_half, obj_y_centers(oi)-obj_y_half]/1000, ...
+              [min(ylim), min(ylim), max(ylim), max(ylim)], ...
+              'r', 'FaceAlpha', 0.1, 'EdgeColor', 'none');
+    end
+    xlabel('Track Position (m)'); ylabel('\epsilon_r');
+    title(sprintf('%s - Permittivity Along Track (base=%.1f, +/-%d%%)', tname, base_er, variation_pct));
+    grid on; hold off;
+    exportgraphics(fig, fullfile(output_dir, sprintf('Permittivity_%s.png', tname)), 'Resolution', 150);
+    close(fig);
+    
+    % --- Individual: Conductivity along track ---
+    fig = figure('Visible', 'off', 'Position', [100 100 900 350]);
+    plot(y_centers/1000, terrains(ti).sigma_along_track * 1000, '-', 'Color', [0.8 0.3 0.2], 'LineWidth', 1);
+    hold on;
+    yline(base_sigma * 1000, 'b--', 'LineWidth', 1.5);
+    yline(base_sigma * (1 + variation_pct/100) * 1000, 'r:', 'LineWidth', 1);
+    yline(base_sigma * (1 - variation_pct/100) * 1000, 'r:', 'LineWidth', 1);
+    for oi = 1:length(obj_y_centers)
+        patch([obj_y_centers(oi)-obj_y_half, obj_y_centers(oi)+obj_y_half, ...
+               obj_y_centers(oi)+obj_y_half, obj_y_centers(oi)-obj_y_half]/1000, ...
+              [min(ylim), min(ylim), max(ylim), max(ylim)], ...
+              'r', 'FaceAlpha', 0.1, 'EdgeColor', 'none');
+    end
+    xlabel('Track Position (m)'); ylabel('\sigma (mS/m)');
+    title(sprintf('%s - Conductivity Along Track (base=%.1f mS/m, +/-%d%%)', tname, base_sigma*1000, variation_pct));
+    grid on; hold off;
+    exportgraphics(fig, fullfile(output_dir, sprintf('Conductivity_%s.png', tname)), 'Resolution', 150);
+    close(fig);
+    
+    % --- Individual: Surface height profile ---
+    fig = figure('Visible', 'off', 'Position', [100 100 900 350]);
+    plot(y_centers/1000, terrains(ti).height_along_track, '-', 'Color', [0.1 0.6 0.3], 'LineWidth', 1);
+    hold on;
+    yline(surface_z_max/2, 'k--', 'LineWidth', 0.5);
+    for oi = 1:length(obj_y_centers)
+        patch([obj_y_centers(oi)-obj_y_half, obj_y_centers(oi)+obj_y_half, ...
+               obj_y_centers(oi)+obj_y_half, obj_y_centers(oi)-obj_y_half]/1000, ...
+              [0, 0, surface_z_max, surface_z_max], ...
+              'r', 'FaceAlpha', 0.1, 'EdgeColor', 'none');
+    end
+    xlabel('Track Position (m)'); ylabel('Height (mm)');
+    title(sprintf('%s - Surface Height (0-%dmm)', tname, surface_z_max));
+    ylim([-0.5, surface_z_max + 0.5]);
+    grid on; hold off;
+    exportgraphics(fig, fullfile(output_dir, sprintf('SurfaceHeight_%s.png', tname)), 'Resolution', 150);
+    close(fig);
+    
+    fprintf('  %s: Permittivity, Conductivity, SurfaceHeight saved.\n', tname);
+end
+
+% --- Individual: 3D surface profile ---
+fig = figure('Visible', 'off', 'Position', [100 100 1100 600]);
+[X_grid2, Y_grid2] = meshgrid(x_centers/1000, y_centers/1000);
+surf(X_grid2, Y_grid2, terrains(1).height_grid, 'EdgeColor', 'none', 'FaceAlpha', 0.9);
+hold on;
+for oi = 1:length(obj_y_centers)
+    obj_x = [-cfg.obj_x_half, cfg.obj_x_half, cfg.obj_x_half, -cfg.obj_x_half]/1000;
+    obj_y_patch = ([obj_y_centers(oi)-obj_y_half, obj_y_centers(oi)-obj_y_half, ...
+              obj_y_centers(oi)+obj_y_half, obj_y_centers(oi)+obj_y_half])/1000;
+    patch(obj_x, obj_y_patch, [surface_z_max+1, surface_z_max+1, surface_z_max+1, surface_z_max+1], ...
+        'r', 'FaceAlpha', 0.5, 'EdgeColor', 'r', 'LineWidth', 1.5);
+end
+colormap(parula); cb = colorbar; cb.Label.String = 'Surface Height (mm)';
+xlabel('X (m)'); ylabel('Y (m)'); zlabel('Height (mm)');
+title('3D Surface Profile (DrySand) - Red = buried objects');
+view([-35, 25]); grid on; hold off;
+exportgraphics(fig, fullfile(output_dir, 'SurfaceProfile_3D.png'), 'Resolution', 150);
+close(fig);
+fprintf('  3D Surface Profile saved.\n');
+
+fprintf('All individual figures saved to %s/\n', output_dir);
 
 % Save terrain data
 save(fullfile(output_dir, 'TerrainData.mat'), 'terrains', 'y_centers', 'x_centers', ...

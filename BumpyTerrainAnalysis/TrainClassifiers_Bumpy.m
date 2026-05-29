@@ -362,6 +362,16 @@ savefig(gcf, fullfile(output_dir, 'ConfusionMatrices.fig'));
 exportgraphics(gcf, fullfile(output_dir, 'ConfusionMatrices.png'), 'Resolution', 150);
 close(gcf);
 
+% Individual confusion matrices
+for i = 1:7
+    fig = figure('Visible', 'off', 'Position', [100 100 700 550]);
+    confusionchart(Y_test, results(i).predictions);
+    title(sprintf('%s - Acc=%.1f%%, F1=%.3f', results(i).name, results(i).accuracy, results(i).f1));
+    exportgraphics(fig, fullfile(output_dir, sprintf('ConfusionMatrix_%s.png', strrep(results(i).name, ' ', '_'))), 'Resolution', 150);
+    close(fig);
+end
+fprintf('Individual confusion matrices saved.\n');
+
 %% Metrics comparison bar chart
 figure('Name', 'Metrics', 'Position', [50 50 1000 400], 'Visible', 'off');
 model_names = {results.name};
