@@ -1,158 +1,172 @@
-%% VisualizeRandomTerrain.m - Show randomized terrain chunks + surface bumps
-% Divides the 20m track into 10,000 chunks, each with slightly different
-% terrain properties (±5% of base εr and σ). Also generates random surface
-% height variation (bumps of ±2mm amplitude).
+%% VisualizeRandomTerrain.m - Comprehensive terrain randomization visualization
+% Shows the randomized bumpy terrain properties in a multi-panel figure:
+%   Row 1: Permittivity (εr) variation along track per terrain
+%   Row 2: Conductivity (σ) variation along track per terrain
+%   Row 3: Surface height bumps along track per terrain
+%   Row 4: 3D surface profile with height colormap and object markers
 %
-% Run this FIRST to inspect the terrain before running the full experiment.
+% Uses the same parameters as TrackSimulation_Bumpy.m (±2%, 100mm chunks)
 
 clear; close all; clc;
-rng(123); % reproducible randomness
+rng(123); % reproducible (same seed as simulation)
 
-%% Base terrain parameters (same as original SimConfig)
-terrains(1).name = 'DrySand';     terrains(1).er = 3.5;   terrains(1).sigma = 0.001;
-terrains(2).name = 'GrassySoil';  terrains(2).er = 15.0;  terrains(2).sigma = 0.05;
-terrains(3).name = 'Rocks';       terrains(3).er = 7.0;   terrains(3).sigma = 0.005;
+%% Add parent path for SimConfig
+addpath('..');
+SimConfig;
 
-%% Track and chunk parameters
-track_length = 20000;       % mm (20 meters)
-n_chunks = 10000;           % number of terrain chunks
-chunk_size = track_length / n_chunks;  % 2mm per chunk
-variation_pct = 5;          % ±5% variation from base
+%% Terrain chunk parameters (matching TrackSimulation_Bumpy.m)
+chunk_size = 100;           % mm (100mm x 100mm per chunk)
+variation_pct = 2;          % ±2% property variation
+surface_z_max = 10;         % mm (surface height range: 0 to 10mm)
 
-% Surface bump parameters
-bump_amplitude_mm = 2.0;    % max bump height ±2mm
-bump_spatial_freq = 0.005;  % spatial frequency (cycles/mm) - controls smoothness
-n_bump_harmonics = 20;      % number of random sine components
+%% Track dimensions
+track_y_start = cfg.track_y_start;   % 0 mm
+track_y_end = cfg.track_y_end;       % 20000 mm
+track_width = cfg.track_width;       % 1500 mm
+
+n_chunks_y = (track_y_end - track_y_start) / chunk_size;  % 200
+n_chunks_x = track_width / chunk_size;                     % 15
+
+%% Object locations
+obj_y_centers = cfg.obj_y_centers;
+obj_y_half = cfg.obj_y_half;
 
 %% Generate randomized terrain for each base type
-fprintf('=== Randomized Terrain Generation ===\n');
-fprintf('Track: %d mm, Chunks: %d (%.1f mm each)\n', track_length, n_chunks, chunk_size);
-fprintf('Property variation: ±%d%% of base values\n', variation_pct);
-fprintf('Surface bumps: ±%.1f mm amplitude\n\n', bump_amplitude_mm);
+fprintf('=== Randomized Terrain Visualization ===\n');
+fprintf('Track: %d mm, Chunks: %d x %d (%.0f mm each)\n', ...
+    track_y_end - track_y_start, n_chunks_y, n_chunks_x, chunk_size);
+fprintf('Property variation: +/-%d%% of base values\n', variation_pct);
+fprintf('Surface height: 0 to %d mm\n\n', surface_z_max);
 
-chunk_centers = linspace(chunk_size/2, track_length - chunk_size/2, n_chunks);
+y_centers = linspace(track_y_start + chunk_size/2, track_y_end - chunk_size/2, n_chunks_y);
+x_centers = linspace(-track_width/2 + chunk_size/2, track_width/2 - chunk_size/2, n_chunks_x);
+
+terrains = cfg.terrains;
 
 for ti = 1:3
     base_er = terrains(ti).er;
     base_sigma = terrains(ti).sigma;
     
-    % Random εr for each chunk (±5% of base, normal distribution clipped)
-    er_variation = base_er * (variation_pct/100) * randn(1, n_chunks);
-    er_variation = max(min(er_variation, base_er*variation_pct/100), -base_er*variation_pct/100);
-    terrains(ti).chunk_er = base_er + er_variation;
+    % Random εr for each chunk (±2% of base, normal distribution clipped)
+    er_grid = base_er + base_er * (variation_pct/100) * randn(n_chunks_y, n_chunks_x);
+    er_grid = max(er_grid, base_er * (1 - variation_pct/100));
+    er_grid = min(er_grid, base_er * (1 + variation_pct/100));
+    terrains(ti).er_grid = er_grid;
     
-    % Random σ for each chunk (±5% of base)
-    sigma_variation = base_sigma * (variation_pct/100) * randn(1, n_chunks);
-    sigma_variation = max(min(sigma_variation, base_sigma*variation_pct/100), -base_sigma*variation_pct/100);
-    terrains(ti).chunk_sigma = base_sigma + sigma_variation;
+    % Effective εr along track (average across X at each Y position)
+    terrains(ti).er_along_track = mean(er_grid, 2)';
     
-    % Random surface height variation (smooth bumps using sum of sines)
-    surface_height = zeros(1, n_chunks);
-    for h = 1:n_bump_harmonics
-        freq = bump_spatial_freq * (0.5 + rand()) * h / n_bump_harmonics;
-        phase = 2*pi*rand();
-        amp = bump_amplitude_mm * (1/h) * (0.5 + rand());  % decreasing amplitude for higher freqs
-        surface_height = surface_height + amp * sin(2*pi*freq*chunk_centers + phase);
+    % Random σ for each chunk (±2% of base)
+    sigma_grid = base_sigma + base_sigma * (variation_pct/100) * randn(n_chunks_y, n_chunks_x);
+    sigma_grid = max(sigma_grid, base_sigma * (1 - variation_pct/100));
+    sigma_grid = min(sigma_grid, base_sigma * (1 + variation_pct/100));
+    terrains(ti).sigma_grid = sigma_grid;
+    terrains(ti).sigma_along_track = mean(sigma_grid, 2)';
+    
+    % Random surface heights (0 to 10mm per chunk)
+    height_grid = rand(n_chunks_y, n_chunks_x) * surface_z_max;
+    
+    % Zero out heights over objects
+    for oi = 1:length(obj_y_centers)
+        oc = obj_y_centers(oi);
+        for iy = 1:n_chunks_y
+            for ix = 1:n_chunks_x
+                if abs(x_centers(ix)) <= cfg.obj_x_half && abs(y_centers(iy) - oc) <= obj_y_half
+                    height_grid(iy, ix) = 0;
+                end
+            end
+        end
     end
-    % Normalize to ±bump_amplitude_mm
-    surface_height = surface_height / max(abs(surface_height)) * bump_amplitude_mm;
-    terrains(ti).surface_height = surface_height;
+    terrains(ti).height_grid = height_grid;
+    terrains(ti).height_along_track = mean(height_grid, 2)';
     
-    fprintf('  %s: εr = %.2f ± %.3f, σ = %.4f ± %.5f S/m\n', ...
-        terrains(ti).name, base_er, std(terrains(ti).chunk_er), ...
-        base_sigma, std(terrains(ti).chunk_sigma));
+    fprintf('  %s: er = %.2f +/- %.4f, sigma = %.5f +/- %.6f S/m\n', ...
+        terrains(ti).name, base_er, std(terrains(ti).er_along_track), ...
+        base_sigma, std(terrains(ti).sigma_along_track));
     fprintf('           Surface height range: [%.2f, %.2f] mm\n', ...
-        min(surface_height), max(surface_height));
+        min(height_grid(:)), max(height_grid(:)));
 end
 
-%% Object locations (same as original)
-obj_y_centers = [3200, 8500, 14100, 18000];
-obj_y_half = 150;  % mm
-
-%% Create visualization figure
-figure('Name', 'Randomized Terrain Visualization', 'Position', [50 50 1600 1000], 'Visible', 'off');
+%% Create visualization figure (4 rows x 3 columns)
+figure('Name', 'Randomized Terrain Visualization', 'Position', [50 50 1600 1100], 'Visible', 'off');
 
 for ti = 1:3
+    base_er = terrains(ti).er;
+    base_sigma = terrains(ti).sigma;
+    
     % --- Row 1: Permittivity variation along track ---
     subplot(4, 3, ti);
-    plot(chunk_centers/1000, terrains(ti).chunk_er, '.', 'MarkerSize', 1, 'Color', [0.2 0.4 0.8]);
+    plot(y_centers/1000, terrains(ti).er_along_track, '-', 'Color', [0.2 0.5 0.8], 'LineWidth', 0.8);
     hold on;
-    yline(terrains(ti).er, 'r--', 'LineWidth', 1.5);
-    % Mark objects
+    yline(base_er, 'r--', 'LineWidth', 1.5);
+    yline(base_er * (1 + variation_pct/100), 'r:', 'LineWidth', 1);
+    yline(base_er * (1 - variation_pct/100), 'r:', 'LineWidth', 1);
+    % Mark object locations
     for oi = 1:length(obj_y_centers)
         patch([obj_y_centers(oi)-obj_y_half, obj_y_centers(oi)+obj_y_half, ...
                obj_y_centers(oi)+obj_y_half, obj_y_centers(oi)-obj_y_half]/1000, ...
-              [min(terrains(ti).chunk_er), min(terrains(ti).chunk_er), ...
-               max(terrains(ti).chunk_er), max(terrains(ti).chunk_er)], ...
+              [min(ylim), min(ylim), max(ylim), max(ylim)], ...
               'r', 'FaceAlpha', 0.1, 'EdgeColor', 'none');
     end
     xlabel('Track Position (m)');
     ylabel('\epsilon_r');
-    title(sprintf('%s - Permittivity (base=%.1f)', terrains(ti).name, terrains(ti).er));
+    title(sprintf('%s - Permittivity (base=%.1f)', terrains(ti).name, base_er));
     grid on;
     
     % --- Row 2: Conductivity variation along track ---
     subplot(4, 3, 3 + ti);
-    plot(chunk_centers/1000, terrains(ti).chunk_sigma * 1000, '.', 'MarkerSize', 1, 'Color', [0.8 0.3 0.2]);
+    plot(y_centers/1000, terrains(ti).sigma_along_track * 1000, '-', 'Color', [0.8 0.3 0.2], 'LineWidth', 0.8);
     hold on;
-    yline(terrains(ti).sigma * 1000, 'b--', 'LineWidth', 1.5);
+    yline(base_sigma * 1000, 'b--', 'LineWidth', 1.5);
+    yline(base_sigma * (1 + variation_pct/100) * 1000, 'r:', 'LineWidth', 1);
+    yline(base_sigma * (1 - variation_pct/100) * 1000, 'r:', 'LineWidth', 1);
     for oi = 1:length(obj_y_centers)
         patch([obj_y_centers(oi)-obj_y_half, obj_y_centers(oi)+obj_y_half, ...
                obj_y_centers(oi)+obj_y_half, obj_y_centers(oi)-obj_y_half]/1000, ...
-              [min(terrains(ti).chunk_sigma)*1000, min(terrains(ti).chunk_sigma)*1000, ...
-               max(terrains(ti).chunk_sigma)*1000, max(terrains(ti).chunk_sigma)*1000], ...
+              [min(ylim), min(ylim), max(ylim), max(ylim)], ...
               'r', 'FaceAlpha', 0.1, 'EdgeColor', 'none');
     end
     xlabel('Track Position (m)');
     ylabel('\sigma (mS/m)');
-    title(sprintf('%s - Conductivity (base=%.1f mS/m)', terrains(ti).name, terrains(ti).sigma*1000));
+    title(sprintf('%s - Conductivity (base=%.1f mS/m)', terrains(ti).name, base_sigma*1000));
     grid on;
     
     % --- Row 3: Surface height profile ---
     subplot(4, 3, 6 + ti);
-    plot(chunk_centers/1000, terrains(ti).surface_height, '-', 'Color', [0.1 0.6 0.3], 'LineWidth', 0.5);
+    plot(y_centers/1000, terrains(ti).height_along_track, '-', 'Color', [0.1 0.6 0.3], 'LineWidth', 0.8);
     hold on;
-    yline(0, 'k--');
+    yline(surface_z_max/2, 'k--', 'LineWidth', 0.5);
     for oi = 1:length(obj_y_centers)
         patch([obj_y_centers(oi)-obj_y_half, obj_y_centers(oi)+obj_y_half, ...
                obj_y_centers(oi)+obj_y_half, obj_y_centers(oi)-obj_y_half]/1000, ...
-              [-bump_amplitude_mm, -bump_amplitude_mm, bump_amplitude_mm, bump_amplitude_mm], ...
+              [0, 0, surface_z_max, surface_z_max], ...
               'r', 'FaceAlpha', 0.1, 'EdgeColor', 'none');
     end
     xlabel('Track Position (m)');
     ylabel('Height (mm)');
-    title(sprintf('%s - Surface Bumps (±%.1f mm)', terrains(ti).name, bump_amplitude_mm));
-    ylim([-bump_amplitude_mm*1.3, bump_amplitude_mm*1.3]);
+    title(sprintf('%s - Surface Bumps (0-%dmm)', terrains(ti).name, surface_z_max));
+    ylim([-0.5, surface_z_max + 0.5]);
     grid on;
 end
 
-% --- Row 4: 3D surface visualization (one terrain as example) ---
+% --- Row 4: 3D surface visualization (DrySand as example) ---
 subplot(4, 3, [10, 11, 12]);
-% Show a 3D view of the terrain surface with color = εr
-x_range = linspace(-750, 750, 50);  % X positions across track width
-y_range = chunk_centers(1:100:end);   % subsample Y for visualization
-[X_grid, Y_grid] = meshgrid(x_range, y_range);
 
-% Generate 2D surface using terrain 1 (DrySand) height + some X variation
-surface_Z = zeros(size(X_grid));
-for yi = 1:length(y_range)
-    chunk_idx = round(y_range(yi) / chunk_size) + 1;
-    chunk_idx = min(chunk_idx, n_chunks);
-    base_h = terrains(1).surface_height(chunk_idx);
-    % Add some X variation (smaller amplitude)
-    x_bump = 0.5 * bump_amplitude_mm * sin(2*pi*x_range/300 + chunk_idx*0.1);
-    surface_Z(yi, :) = base_h + x_bump;
-end
+[X_grid, Y_grid] = meshgrid(x_centers/1000, y_centers/1000);
+surface_Z = terrains(1).height_grid;
 
-surf(X_grid/1000, Y_grid/1000, surface_Z, 'EdgeColor', 'none', 'FaceAlpha', 0.9);
+surf(X_grid, Y_grid, surface_Z, 'EdgeColor', 'none', 'FaceAlpha', 0.9);
 hold on;
+
 % Mark objects as red patches on surface
 for oi = 1:length(obj_y_centers)
-    obj_x = [-250, 250, 250, -250]/1000;
+    obj_x = [-cfg.obj_x_half, cfg.obj_x_half, cfg.obj_x_half, -cfg.obj_x_half]/1000;
     obj_y = ([obj_y_centers(oi)-obj_y_half, obj_y_centers(oi)-obj_y_half, ...
               obj_y_centers(oi)+obj_y_half, obj_y_centers(oi)+obj_y_half])/1000;
-    patch(obj_x, obj_y, [3 3 3 3], 'r', 'FaceAlpha', 0.5, 'EdgeColor', 'r');
+    patch(obj_x, obj_y, [surface_z_max+1, surface_z_max+1, surface_z_max+1, surface_z_max+1], ...
+        'r', 'FaceAlpha', 0.5, 'EdgeColor', 'r', 'LineWidth', 1.5);
 end
+
 colormap(gca, parula);
 cb = colorbar; cb.Label.String = 'Surface Height (mm)';
 xlabel('X (m)'); ylabel('Y (m)'); zlabel('Height (mm)');
@@ -160,8 +174,8 @@ title('3D Surface Profile (DrySand) - Red = buried objects');
 view([-35, 25]);
 grid on;
 
-sgtitle(sprintf('Randomized Terrain: %d chunks, ±%d%% property variation, ±%.1fmm surface bumps', ...
-    n_chunks, variation_pct, bump_amplitude_mm), 'FontSize', 13, 'FontWeight', 'bold');
+sgtitle(sprintf('Randomized Terrain: %d chunks, +/-%d%% property variation, 0-%dmm surface bumps', ...
+    n_chunks_y * n_chunks_x, variation_pct, surface_z_max), 'FontSize', 13, 'FontWeight', 'bold');
 
 % Save
 output_dir = 'Results';
@@ -170,7 +184,7 @@ exportgraphics(gcf, fullfile(output_dir, 'RandomizedTerrain.png'), 'Resolution',
 close(gcf);
 fprintf('\nVisualization saved: %s\n', fullfile(output_dir, 'RandomizedTerrain.png'));
 
-% Also save the terrain data for use by the simulation
-save(fullfile(output_dir, 'TerrainData.mat'), 'terrains', 'chunk_centers', 'chunk_size', ...
-    'n_chunks', 'variation_pct', 'bump_amplitude_mm');
+% Save terrain data
+save(fullfile(output_dir, 'TerrainData.mat'), 'terrains', 'y_centers', 'x_centers', ...
+    'chunk_size', 'n_chunks_y', 'n_chunks_x', 'variation_pct', 'surface_z_max');
 fprintf('Terrain data saved: %s\n', fullfile(output_dir, 'TerrainData.mat'));

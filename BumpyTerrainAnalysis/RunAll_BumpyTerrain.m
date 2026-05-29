@@ -10,7 +10,7 @@
 fprintf('============================================================\n');
 fprintf('   BUMPY TERRAIN EXPERIMENT - FULL PIPELINE\n');
 fprintf('   Chunks: 100mm x 100mm, Surface: 0-10mm, Depth: 500mm\n');
-fprintf('   Property variation: ±5%% εr and σ\n');
+fprintf('   Property variation: ±2%% εr and σ\n');
 fprintf('============================================================\n\n');
 
 t_total = tic;

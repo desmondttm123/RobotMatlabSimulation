@@ -18,7 +18,7 @@ rng(123); % reproducible terrain
 
 %% Terrain chunk parameters
 chunk_size = 100;           % mm (100mm x 100mm XY per chunk)
-variation_pct = 5;          % ±5% property variation
+variation_pct = 2;          % ±2% property variation
 surface_z_max = 10;         % mm (top surface height: 0 to 10mm)
 layer_thickness = 100;      % mm per layer
 total_depth = 500;          % mm total depth
@@ -46,7 +46,7 @@ height_center = cfg.sensor_z / 1000;
 sensor1_x = cfg.sensor1_x / 1000;
 sensor2_x = cfg.sensor2_x / 1000;
 
-gy_min = track_y_start - 1000;
+gy_min = track_y_start - 1000;  % extended to show full robot (offset=-500, STL extends ~2000mm)
 gy_max = track_y_end;
 
 obj_w = cfg.obj_x_half;
@@ -289,7 +289,13 @@ title(sprintf('Bumpy Terrain: 100mm chunks, surface 0-%dmm, depth %dmm, \\epsilo
     surface_z_max, total_depth, variation_pct));
 grid on;
 set(gca, 'Projection', 'orthographic');
-view([178.9646, 1.2123]);
+% view([azimuth, elevation]) in degrees:
+%   azimuth  = rotation around Z-axis (0=looking along -Y, 90=along +X, 180=along +Y)
+%   elevation = rotation above XY plane (0=side view, 90=top-down, negative=below)
+% Examples: view([0,90])=top-down, view([0,0])=front(YZ), view([90,0])=right side(XZ)
+% view([178.9646, 1.2123]);
+
+view([168, 0.8]);
 daspect([1 1 1]);
 ylim([gy_min gy_max]);
 xlim([-1000 1000]);
@@ -364,6 +370,7 @@ light('Position', [0, 3000, 500]);
 xlabel('X (mm)'); ylabel('Y (mm)'); zlabel('Z (mm)');
 title(sprintf('Detail: 100mm blocks, top 0-%dmm, depth %dmm (5 layers)', surface_z_max, total_depth));
 grid on;
+% view([azimuth, elevation]): azimuth=rotate around Z, elevation=tilt up from XY
 view([-25, 35]);
 daspect([1 1 1]);
 zlim([-total_depth-20 surface_z_max+20]);
@@ -374,3 +381,59 @@ savefig(gcf, fullfile(output_dir, 'BumpyTerrain_Detail.fig'));
 exportgraphics(gcf, fullfile(output_dir, 'BumpyTerrain_Detail.png'), 'Resolution', 150);
 close(gcf);
 fprintf('BumpyTerrain_Detail.png saved.\n');
+
+%% === TERRAIN SURFACE PROFILE (2D cross-section) ===
+figure('Name', 'Terrain Profile', 'Position', [50, 50, 1400, 500], 'Visible', 'off');
+
+% Plot surface height profile along the center line (X=0, chunk ix=8)
+center_ix = round(n_chunks_x / 2);  % middle column
+y_positions = y_centers;  % center of each Y chunk
+height_profile = surface_heights(:, center_ix);
+
+% Also plot a few adjacent lines for context
+subplot(2,1,1);
+hold on;
+colors = lines(5);
+plot_ix = [1, 4, 8, 12, 15];  % spread across X
+for pi = 1:length(plot_ix)
+    ix = plot_ix(pi);
+    plot(y_positions/1000, surface_heights(:, ix), '-', ...
+        'Color', colors(pi,:), 'LineWidth', 1.2);
+end
+legend(arrayfun(@(ix) sprintf('X=%.0fmm', x_centers(ix)), plot_ix, 'UniformOutput', false), ...
+    'Location', 'eastoutside');
+
+% Mark object locations
+for oi = 1:length(obj_y_centers)
+    xline(obj_y_centers(oi)/1000, 'r--', 'LineWidth', 1);
+end
+
+xlabel('Y position along track (m)');
+ylabel('Surface height (mm)');
+title(sprintf('Terrain Surface Profile (±%d%% variation, 0-%dmm roughness)', variation_pct, surface_z_max));
+grid on;
+ylim([-1 surface_z_max+1]);
+hold off;
+
+% Bottom subplot: εr variation along center line
+subplot(2,1,2);
+hold on;
+er_profile = er_layers{1}(:, center_ix);
+plot(y_positions/1000, er_profile, 'k-', 'LineWidth', 1.2);
+yline(base_er, 'b--', ['Base \epsilon_r = ' num2str(base_er, '%.1f')], 'LineWidth', 1);
+yline(base_er * (1 + variation_pct/100), 'r:', sprintf('+%d%%', variation_pct));
+yline(base_er * (1 - variation_pct/100), 'r:', sprintf('-%d%%', variation_pct));
+
+for oi = 1:length(obj_y_centers)
+    xline(obj_y_centers(oi)/1000, 'r--', 'LineWidth', 1);
+end
+
+xlabel('Y position along track (m)');
+ylabel('\epsilon_r (relative permittivity)');
+title('Surface Layer Permittivity Along Track Center (X=0)');
+grid on;
+hold off;
+
+exportgraphics(gcf, fullfile(output_dir, 'BumpyTerrain_Profile.png'), 'Resolution', 150);
+close(gcf);
+fprintf('BumpyTerrain_Profile.png saved.\n');

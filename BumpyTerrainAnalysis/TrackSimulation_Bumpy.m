@@ -1,6 +1,6 @@
 %% TrackSimulation_Bumpy.m - RF Simulation with Randomized Terrain
 % Modified TrackSimulation that uses per-chunk terrain properties:
-%   - 100mm x 100mm chunks with ±5% εr/σ variation
+%   - 100mm x 100mm chunks with ±2% εr/σ variation
 %   - Surface height offset 0-10mm per chunk (affects reflection geometry)
 %   - 5 layers of 100mm each (top layer properties used for reflection)
 %
@@ -16,7 +16,7 @@ rng(123); % Same seed as terrain visualization for consistency
 
 %% Terrain chunk generation
 chunk_size = 100;           % mm
-variation_pct = 5;          % ±5% property variation
+variation_pct = 2;          % ±2% property variation
 surface_z_max = 10;         % mm (0 to 10mm surface height)
 
 track_width = cfg.track_width;       % 1500 mm
@@ -43,12 +43,12 @@ for ti = 1:nTerrains
     base_er = terrains(ti).er;
     base_sigma = terrains(ti).sigma;
     
-    % εr variation: ±5% of base
+    % εr variation: ±2% of base
     er_field = base_er + base_er * (variation_pct/100) * randn(n_chunks_y, n_chunks_x);
     er_field = max(er_field, base_er * (1 - variation_pct/100*2));
     er_field = min(er_field, base_er * (1 + variation_pct/100*2));
     
-    % σ variation: ±5% of base
+    % σ variation: ±2% of base
     sigma_field = base_sigma + base_sigma * (variation_pct/100) * randn(n_chunks_y, n_chunks_x);
     sigma_field = max(sigma_field, base_sigma * (1 - variation_pct/100*2));
     sigma_field = min(sigma_field, base_sigma * (1 + variation_pct/100*2));
