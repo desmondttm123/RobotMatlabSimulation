@@ -285,8 +285,11 @@ light('Position', [500 -5000 1000]);
 light('Position', [-500 15000 500], 'Style', 'local');
 
 xlabel('X (mm)'); ylabel('Y (mm)'); zlabel('Z (mm)');
-title(sprintf('Bumpy Terrain: 100mm chunks, surface 0-%dmm, depth %dmm, \\epsilon_r ±%d%%', ...
-    surface_z_max, total_depth, variation_pct));
+% title(sprintf('Bumpy Terrain: 100mm chunks, surface 0-%dmm, depth %dmm, \\epsilon_r ±%d%%', ...
+%    surface_z_max, total_depth, variation_pct));
+
+title(sprintf('RO4 - Burried Object Simulation with Uneven Terrain'));
+
 grid on;
 set(gca, 'Projection', 'orthographic');
 % view([azimuth, elevation]) in degrees:
