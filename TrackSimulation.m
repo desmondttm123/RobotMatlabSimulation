@@ -145,7 +145,7 @@ for ti = 1:nTerrains
             
             [rssi_low_s2, rssi_high_s2] = compute_rssi(tx1_pos, rx2_pos, ...
                 y_pos, eps_terrain, eps_void, objects, obj_x_half, obj_y_half, ...
-                freq, lambda, G_tx, G_rx, low_power_range, high_power_range);
+                freq, lambda, G_tx, G_rx, low_power_range, high_power_range, cfg);
             
             data_sensor2(pi_idx, rx_idx) = rssi_low_s2;        % Low power
             data_sensor2(pi_idx, rx_idx + nRX) = rssi_high_s2;  % High power
@@ -157,7 +157,7 @@ for ti = 1:nTerrains
             
             [rssi_low_s1, rssi_high_s1] = compute_rssi(tx2_pos, rx1_pos, ...
                 y_pos, eps_terrain, eps_void, objects, obj_x_half, obj_y_half, ...
-                freq, lambda, G_tx, G_rx, low_power_range, high_power_range);
+                freq, lambda, G_tx, G_rx, low_power_range, high_power_range, cfg);
             
             data_sensor1(pi_idx, rx_idx) = rssi_low_s1;        % Low power
             data_sensor1(pi_idx, rx_idx + nRX) = rssi_high_s1;  % High power
@@ -207,9 +207,12 @@ for ti = 1:nTerrains
     xlabel('Distance (m)'); ylabel('RSSI (dBm)');
     title(sprintf('Sensor 1 RX - Low Power (%s)', terrain.name));
     grid on; xlim([0 20]);
-    % Mark object locations
-    for oi = 1:4
-        xline(objects(oi).y_center/1000, '--r', 'LineWidth', 0.5);
+    % Mark object regions
+    yl = ylim;
+    for oi = 1:length(objects)
+        xr = [(objects(oi).y_center - obj_y_half)/1000, (objects(oi).y_center + obj_y_half)/1000];
+        patch([xr(1) xr(2) xr(2) xr(1)], [yl(1) yl(1) yl(2) yl(2)], ...
+            'r', 'FaceAlpha', 0.1, 'EdgeColor', 'r', 'LineStyle', '--', 'LineWidth', 0.5);
     end
     
     subplot(2,2,2);
@@ -217,8 +220,11 @@ for ti = 1:nTerrains
     xlabel('Distance (m)'); ylabel('RSSI (dBm)');
     title(sprintf('Sensor 1 RX - High Power (%s)', terrain.name));
     grid on; xlim([0 20]);
-    for oi = 1:4
-        xline(objects(oi).y_center/1000, '--r', 'LineWidth', 0.5);
+    yl = ylim;
+    for oi = 1:length(objects)
+        xr = [(objects(oi).y_center - obj_y_half)/1000, (objects(oi).y_center + obj_y_half)/1000];
+        patch([xr(1) xr(2) xr(2) xr(1)], [yl(1) yl(1) yl(2) yl(2)], ...
+            'r', 'FaceAlpha', 0.1, 'EdgeColor', 'r', 'LineStyle', '--', 'LineWidth', 0.5);
     end
     
     subplot(2,2,3);
@@ -226,8 +232,11 @@ for ti = 1:nTerrains
     xlabel('Distance (m)'); ylabel('RSSI (dBm)');
     title(sprintf('Sensor 2 RX - Low Power (%s)', terrain.name));
     grid on; xlim([0 20]);
-    for oi = 1:4
-        xline(objects(oi).y_center/1000, '--r', 'LineWidth', 0.5);
+    yl = ylim;
+    for oi = 1:length(objects)
+        xr = [(objects(oi).y_center - obj_y_half)/1000, (objects(oi).y_center + obj_y_half)/1000];
+        patch([xr(1) xr(2) xr(2) xr(1)], [yl(1) yl(1) yl(2) yl(2)], ...
+            'r', 'FaceAlpha', 0.1, 'EdgeColor', 'r', 'LineStyle', '--', 'LineWidth', 0.5);
     end
     
     subplot(2,2,4);
@@ -235,8 +244,11 @@ for ti = 1:nTerrains
     xlabel('Distance (m)'); ylabel('RSSI (dBm)');
     title(sprintf('Sensor 2 RX - High Power (%s)', terrain.name));
     grid on; xlim([0 20]);
-    for oi = 1:4
-        xline(objects(oi).y_center/1000, '--r', 'LineWidth', 0.5);
+    yl = ylim;
+    for oi = 1:length(objects)
+        xr = [(objects(oi).y_center - obj_y_half)/1000, (objects(oi).y_center + obj_y_half)/1000];
+        patch([xr(1) xr(2) xr(2) xr(1)], [yl(1) yl(1) yl(2) yl(2)], ...
+            'r', 'FaceAlpha', 0.1, 'EdgeColor', 'r', 'LineStyle', '--', 'LineWidth', 0.5);
     end
     
     sgtitle(sprintf('RSSI Along Track - Terrain: %s (\\epsilon_r=%.1f, \\sigma=%.4f)', ...
@@ -274,6 +286,121 @@ for ti = 1:nTerrains
     
     savefig(gcf, fullfile(cfg.output_dir, sprintf('RSSI_Mean_%s.fig', terrain.name)));
     exportgraphics(gcf, fullfile(cfg.output_dir, sprintf('RSSI_Mean_%s.png', terrain.name)), 'Resolution', 150);
+    close(gcf);
+    
+    %% Per-sensor statistics plot (std, min, max, IQR)
+    % Compute stats across 32 antennas at each position (using low power)
+    s1_data = data_sensor1(:, 1:nRX);
+    s2_data = data_sensor2(:, 1:nRX);
+    
+    stats_s1.mean = mean(s1_data, 2);
+    stats_s1.std = std(s1_data, 0, 2);
+    stats_s1.min = min(s1_data, [], 2);
+    stats_s1.max = max(s1_data, [], 2);
+    q25_s1 = quantile(s1_data, 0.25, 2);
+    q75_s1 = quantile(s1_data, 0.75, 2);
+    stats_s1.iqr = q75_s1 - q25_s1;
+    
+    stats_s2.mean = mean(s2_data, 2);
+    stats_s2.std = std(s2_data, 0, 2);
+    stats_s2.min = min(s2_data, [], 2);
+    stats_s2.max = max(s2_data, [], 2);
+    q25_s2 = quantile(s2_data, 0.25, 2);
+    q75_s2 = quantile(s2_data, 0.75, 2);
+    stats_s2.iqr = q75_s2 - q25_s2;
+    
+    y_km = y_positions / 1000;
+    
+    % Sensor 1 stats
+    figure('Name', sprintf('Stats_S1_%s', terrain.name), 'Position', [50 50 1200 700], 'Visible', 'off');
+    subplot(2,3,1); plot(y_km, stats_s1.mean, 'b', 'LineWidth', 1); grid on; xlim([0 20]);
+    xlabel('Distance (m)'); ylabel('dBm'); title('Sensor 1 - Mean');
+    subplot(2,3,2); plot(y_km, stats_s1.std, 'b', 'LineWidth', 1); grid on; xlim([0 20]);
+    xlabel('Distance (m)'); ylabel('dB'); title('Sensor 1 - Std');
+    subplot(2,3,3); plot(y_km, stats_s1.iqr, 'b', 'LineWidth', 1); grid on; xlim([0 20]);
+    xlabel('Distance (m)'); ylabel('dB'); title('Sensor 1 - IQR');
+    subplot(2,3,4); plot(y_km, stats_s1.min, 'b', 'LineWidth', 1); grid on; xlim([0 20]);
+    xlabel('Distance (m)'); ylabel('dBm'); title('Sensor 1 - Min');
+    subplot(2,3,5); plot(y_km, stats_s1.max, 'b', 'LineWidth', 1); grid on; xlim([0 20]);
+    xlabel('Distance (m)'); ylabel('dBm'); title('Sensor 1 - Max');
+    subplot(2,3,6); 
+    plot(y_km, stats_s1.max - stats_s1.min, 'b', 'LineWidth', 1); grid on; xlim([0 20]);
+    xlabel('Distance (m)'); ylabel('dB'); title('Sensor 1 - Range (Max-Min)');
+    sgtitle(sprintf('Sensor 1 Statistics - %s', terrain.name));
+    savefig(gcf, fullfile(cfg.output_dir, sprintf('Stats_S1_%s.fig', terrain.name)));
+    exportgraphics(gcf, fullfile(cfg.output_dir, sprintf('Stats_S1_%s.png', terrain.name)), 'Resolution', 150);
+    close(gcf);
+    
+    % Sensor 2 stats
+    figure('Name', sprintf('Stats_S2_%s', terrain.name), 'Position', [50 50 1200 700], 'Visible', 'off');
+    subplot(2,3,1); plot(y_km, stats_s2.mean, 'r', 'LineWidth', 1); grid on; xlim([0 20]);
+    xlabel('Distance (m)'); ylabel('dBm'); title('Sensor 2 - Mean');
+    subplot(2,3,2); plot(y_km, stats_s2.std, 'r', 'LineWidth', 1); grid on; xlim([0 20]);
+    xlabel('Distance (m)'); ylabel('dB'); title('Sensor 2 - Std');
+    subplot(2,3,3); plot(y_km, stats_s2.iqr, 'r', 'LineWidth', 1); grid on; xlim([0 20]);
+    xlabel('Distance (m)'); ylabel('dB'); title('Sensor 2 - IQR');
+    subplot(2,3,4); plot(y_km, stats_s2.min, 'r', 'LineWidth', 1); grid on; xlim([0 20]);
+    xlabel('Distance (m)'); ylabel('dBm'); title('Sensor 2 - Min');
+    subplot(2,3,5); plot(y_km, stats_s2.max, 'r', 'LineWidth', 1); grid on; xlim([0 20]);
+    xlabel('Distance (m)'); ylabel('dBm'); title('Sensor 2 - Max');
+    subplot(2,3,6); 
+    plot(y_km, stats_s2.max - stats_s2.min, 'r', 'LineWidth', 1); grid on; xlim([0 20]);
+    xlabel('Distance (m)'); ylabel('dB'); title('Sensor 2 - Range (Max-Min)');
+    sgtitle(sprintf('Sensor 2 Statistics - %s', terrain.name));
+    savefig(gcf, fullfile(cfg.output_dir, sprintf('Stats_S2_%s.fig', terrain.name)));
+    exportgraphics(gcf, fullfile(cfg.output_dir, sprintf('Stats_S2_%s.png', terrain.name)), 'Resolution', 150);
+    close(gcf);
+    
+    %% Between-sensor comparison plot (diff_mean, diff_std, cross-correlation)
+    diff_mean = stats_s1.mean - stats_s2.mean;
+    diff_std = stats_s1.std - stats_s2.std;
+    
+    % Cross-correlation (sliding window, normalized per position)
+    % Use per-position correlation across the 32 antennas
+    xcorr_per_pos = zeros(nPositions, 1);
+    for pi_idx = 1:nPositions
+        r = corrcoef(s1_data(pi_idx,:), s2_data(pi_idx,:));
+        xcorr_per_pos(pi_idx) = r(1,2);
+    end
+    
+    figure('Name', sprintf('Between_Sensors_%s', terrain.name), 'Position', [50 50 1100 600], 'Visible', 'off');
+    subplot(3,1,1);
+    plot(y_km, diff_mean, 'k', 'LineWidth', 1.2); grid on; xlim([0 20]);
+    xlabel('Distance (m)'); ylabel('\Delta dBm');
+    title('Mean Difference (Sensor1 - Sensor2)');
+    yl = ylim;
+    for oi = 1:length(objects)
+        xr = [(objects(oi).y_center - obj_y_half)/1000, (objects(oi).y_center + obj_y_half)/1000];
+        patch([xr(1) xr(2) xr(2) xr(1)], [yl(1) yl(1) yl(2) yl(2)], ...
+            'r', 'FaceAlpha', 0.1, 'EdgeColor', 'r', 'LineStyle', '--', 'LineWidth', 0.5);
+    end
+    
+    subplot(3,1,2);
+    plot(y_km, diff_std, 'm', 'LineWidth', 1.2); grid on; xlim([0 20]);
+    xlabel('Distance (m)'); ylabel('\Delta dB');
+    title('Std Difference (Sensor1 - Sensor2)');
+    yl = ylim;
+    for oi = 1:length(objects)
+        xr = [(objects(oi).y_center - obj_y_half)/1000, (objects(oi).y_center + obj_y_half)/1000];
+        patch([xr(1) xr(2) xr(2) xr(1)], [yl(1) yl(1) yl(2) yl(2)], ...
+            'r', 'FaceAlpha', 0.1, 'EdgeColor', 'r', 'LineStyle', '--', 'LineWidth', 0.5);
+    end
+    
+    subplot(3,1,3);
+    plot(y_km, xcorr_per_pos, 'Color', [0 0.5 0], 'LineWidth', 1.2); grid on; xlim([0 20]);
+    xlabel('Distance (m)'); ylabel('Correlation');
+    title('Cross-Correlation (S1 vs S2, per position)');
+    ylim([-1 1]);
+    yl = ylim;
+    for oi = 1:length(objects)
+        xr = [(objects(oi).y_center - obj_y_half)/1000, (objects(oi).y_center + obj_y_half)/1000];
+        patch([xr(1) xr(2) xr(2) xr(1)], [yl(1) yl(1) yl(2) yl(2)], ...
+            'r', 'FaceAlpha', 0.1, 'EdgeColor', 'r', 'LineStyle', '--', 'LineWidth', 0.5);
+    end
+    
+    sgtitle(sprintf('Between-Sensor Comparison - %s', terrain.name));
+    savefig(gcf, fullfile(cfg.output_dir, sprintf('Between_Sensors_%s.fig', terrain.name)));
+    exportgraphics(gcf, fullfile(cfg.output_dir, sprintf('Between_Sensors_%s.png', terrain.name)), 'Resolution', 150);
     close(gcf);
 end
 
@@ -315,7 +442,7 @@ fprintf('Figures saved as .fig and .png\n');
 
 function [rssi_low, rssi_high] = compute_rssi(tx_pos, rx_pos, y_sensor, ...
     eps_terrain, eps_void, objects, obj_x_half, obj_y_half, ...
-    freq, lambda, G_tx, G_rx, low_pwr, high_pwr)
+    freq, lambda, G_tx, G_rx, low_pwr, high_pwr, cfg)
     % Compute RSSI for a TX->RX pair considering ground reflection
     % tx_pos, rx_pos: [x, y, z] in mm
     % Returns RSSI in dBm for low and high power
@@ -375,12 +502,7 @@ function [rssi_low, rssi_high] = compute_rssi(tx_pos, rx_pos, y_sensor, ...
     Gamma_mag = abs(Gamma);
     
     % Free-space path loss (dB)
-    FSPL_direct = 20*log10(4*pi*d_direct/lambda*1000) ;  % lambda in mm
-    FSPL_reflected = 20*log10(4*pi*d_reflected/lambda*1000);
-    
-    % Wait - lambda is in meters, distances in meters. Let me fix.
-    % lambda is already in meters from the main script
-    % But d_direct and d_reflected are in meters now (divided by 1000)
+    % lambda in meters, distances in meters
     FSPL_direct = 20*log10(4*pi*d_direct/(lambda));
     FSPL_reflected = 20*log10(4*pi*d_reflected/(lambda));
     
@@ -389,9 +511,9 @@ function [rssi_low, rssi_high] = compute_rssi(tx_pos, rx_pos, y_sensor, ...
     
     % Total received power (combine direct + reflected)
     % Direct path is weaker because sensors face ground (not each other)
-    % Apply antenna pattern: direct path is ~-10dB off-axis
-    pattern_loss_direct = 12;  % dB (signal mostly goes to ground, not sideways)
-    pattern_loss_reflected = 2; % dB (reflected path is more aligned with antenna boresight)
+    % Apply antenna pattern loss from config
+    pattern_loss_direct = cfg.pattern_loss_direct;
+    pattern_loss_reflected = cfg.pattern_loss_reflected;
     
     % Power contributions in linear
     P_direct_lin = 10^((-FSPL_direct + G_tx + G_rx - pattern_loss_direct)/10);
@@ -400,12 +522,12 @@ function [rssi_low, rssi_high] = compute_rssi(tx_pos, rx_pos, y_sensor, ...
     % Phase difference between paths (creates interference pattern)
     phase_diff = 2*pi*(d_reflected - d_direct)/(lambda);
     
-    % Coherent sum (with phase)
-    P_total_lin = P_direct_lin + P_reflected_lin * Gamma_mag * exp(1j*phase_diff);
+    % Coherent sum (with phase) - reflection already in P_reflected_lin
+    P_total_lin = P_direct_lin + P_reflected_lin * exp(1j*phase_diff);
     P_total_dB = 10*log10(abs(P_total_lin) + 1e-20);
     
     % Add measurement noise (RSSI quantization + thermal)
-    noise_std = 0.5;  % dB standard deviation
+    noise_std = cfg.noise_std;
     
     % Low power RSSI
     P_tx_low = low_pwr(1) + (low_pwr(2)-low_pwr(1))*rand();

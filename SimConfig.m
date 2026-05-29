@@ -46,6 +46,11 @@ cfg.high_power_range = [0, 2];      % High power TX range
 cfg.G_tx = 2.0;
 cfg.G_rx = 2.0;
 
+%% RF channel model parameters
+cfg.pattern_loss_direct = 25;   % dB (off-boresight loss for direct LOS path)
+cfg.pattern_loss_reflected = 0; % dB (reflected path aligned with boresight)
+cfg.noise_std = 0.05;           % dB (RSSI measurement noise std dev)
+
 %% Robot STL
 cfg.robot_stl_path = '3D/RhinoV2Low.stl';
 cfg.robot_y_offset = -500;      % mm

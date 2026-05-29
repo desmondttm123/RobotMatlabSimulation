@@ -19,6 +19,12 @@ Run the full RF track simulation:
 matlab -batch "TrackSimulation"
 ```
 
+Train classifiers (SVM, MLP, Ensemble, Bagged Trees, KNN):
+
+```
+matlab -batch "TrainClassifiers"
+```
+
 ## Configuration
 
 Edit `SimConfig.m` to change shared parameters (track size, object positions, materials, etc.).
