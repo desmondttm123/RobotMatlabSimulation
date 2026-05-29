@@ -218,21 +218,149 @@ Ten additional experiments were performed to maximize F1 through model-level tun
 
 ---
 
+---
+
+## Bumpy Terrain Analysis (Realistic Heterogeneous Ground)
+
+### Motivation
+
+The flat-terrain simulation assumes perfectly uniform material properties across the entire track. In reality, natural terrain exhibits spatial variation in permittivity and conductivity due to moisture pockets, rock inclusions, root systems, and compaction differences. This extension introduces **randomized chunk-based terrain** to evaluate classifier robustness under realistic conditions.
+
+### Terrain Randomization Model
+
+| Parameter | Value |
+|-----------|-------|
+| Chunk size | 100 mm × 100 mm (along-track × depth) |
+| Chunks along track | 200 (covering 20 m) |
+| Depth layers | 5 (total depth 500 mm) |
+| Surface chunks per position | 15 (lateral, 1500 mm width) |
+| Total chunks | 3000 per terrain |
+| Material variation | **±2% εr and σ** (chunk-to-chunk) |
+| Surface roughness | 0–10 mm random height per chunk |
+| Effective ground properties | Weighted average of surface chunks at each position |
+
+Each terrain type (DrySand, GrassySoil, Rocks) has its base permittivity and conductivity randomly perturbed per-chunk, simulating natural heterogeneity. The robot "sees" an effective ground that is the weighted average of the 15 lateral surface chunks at each position.
+
+### Randomized Terrain Visualization
+
+![Randomized Terrain](BumpyTerrainAnalysis/Results/RandomizedTerrain.png)
+
+3D visualization showing the chunk-based terrain with color-coded permittivity variation. Each 100×100 mm chunk has independently randomized material properties within ±2% of the base values.
+
+![Bumpy Terrain Setup](BumpyTerrainAnalysis/Results/BumpyTerrain_Setup.png)
+
+### RSSI Results on Bumpy Terrain
+
+| Terrain | RSSI Along Track | Mean RSSI |
+|---------|-----------------|-----------|
+| Dry Sand | ![](BumpyTerrainAnalysis/Results/RSSI_DrySand.png) | ![](BumpyTerrainAnalysis/Results/RSSI_Mean_DrySand.png) |
+| Grassy Soil | ![](BumpyTerrainAnalysis/Results/RSSI_GrassySoil.png) | ![](BumpyTerrainAnalysis/Results/RSSI_Mean_GrassySoil.png) |
+| Rocks | ![](BumpyTerrainAnalysis/Results/RSSI_Rocks.png) | ![](BumpyTerrainAnalysis/Results/RSSI_Mean_Rocks.png) |
+
+### Between-Sensor Comparison (Bumpy)
+
+| Dry Sand | Grassy Soil | Rocks |
+|----------|-------------|-------|
+| ![](BumpyTerrainAnalysis/Results/Between_DrySand.png) | ![](BumpyTerrainAnalysis/Results/Between_GrassySoil.png) | ![](BumpyTerrainAnalysis/Results/Between_Rocks.png) |
+
+### Terrain Comparison (Bumpy)
+
+![Terrain Comparison](BumpyTerrainAnalysis/Results/Terrain_Comparison.png)
+
+---
+
+### Classification Results on Bumpy Terrain (±2% Variation)
+
+**Dataset**: 6003 samples (2001 positions × 3 terrains), 80/20 stratified split  
+**Train**: 4803 samples, **Test**: 1200 samples  
+**Object positions**: 124 / 2001 per terrain
+
+#### Baseline Classifiers (Phase 2)
+
+| Model | Accuracy | Macro F1 | Precision | Recall | Time |
+|-------|----------|----------|-----------|--------|------|
+| SVM (Gaussian) | 81.67% | 0.6204 | — | — | — |
+| MLP [256-128-64] | 79.25% | 0.5744 | — | — | — |
+| Ensemble (Boosted) | 80.50% | 0.5873 | — | — | — |
+| Bagged Trees | 79.75% | 0.5619 | — | — | — |
+| KNN (k=7) | 73.58% | 0.5633 | — | — | — |
+| Two-Stage | 78.83% | 0.5856 | — | — | — |
+| **RUSBoost** | **81.50%** | **0.6284** | — | — | — |
+
+#### Advanced Tuning (Phase 3)
+
+| # | Experiment | Accuracy | Macro F1 | Precision | Recall | Time |
+|---|------------|----------|----------|-----------|--------|------|
+| 1 | **RUSBoost (1000 cycles, deeper)** | **82.58%** | **0.6407** | **0.6408** | **0.6438** | **21.4s** |
+| 2 | RUSBoost (stats-only) | 76.50% | 0.5519 | 0.5523 | 0.5542 | 5.2s |
+| 3 | Bagged Trees (1000, oversample) | 80.75% | 0.5786 | 0.5757 | 0.5834 | 31.9s |
+| 4 | AdaBoostM2 (500, deep) | 81.33% | 0.5579 | 0.5591 | 0.5619 | 85.3s |
+| 5 | RUSBoost + Top-50 features | 79.75% | 0.6152 | 0.6173 | 0.6173 | 7.4s |
+| 6 | MLP [512-256-128-64] | 79.75% | 0.5915 | 0.5918 | 0.5916 | 111.0s |
+| 7 | Voting Ensemble (3 models) | 81.50% | 0.5946 | 0.5981 | 0.5936 | 71.9s |
+| 8 | RUSBoost (2000 cycles, LR=0.01) | 82.67% | 0.6343 | 0.6364 | 0.6377 | 40.3s |
+| 9 | Two-Stage (SVM + RUSBoost) | 81.50% | 0.6383 | 0.6382 | 0.6385 | 2.9s |
+| 10 | Bagged Trees (cost-sensitive) | 79.33% | 0.5802 | 0.5789 | 0.5821 | 15.4s |
+
+**Best Model (Bumpy Terrain)**: RUSBoost-1000-deep — **F1 = 0.6407, Accuracy = 82.58%**
+
+### Confusion Matrices (Bumpy)
+
+![Confusion Matrices](BumpyTerrainAnalysis/Results/ConfusionMatrices.png)
+
+### Metrics Comparison (Bumpy)
+
+![Metrics Comparison](BumpyTerrainAnalysis/Results/MetricsComparison.png)
+
+---
+
+### Performance Comparison: Flat vs Bumpy Terrain
+
+| Condition | Best Model | Accuracy | Macro F1 | Δ F1 |
+|-----------|-----------|----------|----------|------|
+| Flat terrain (uniform) | RUSBoost-500 | 89.50% | 0.6885 | — |
+| Bumpy terrain (±2% variation) | RUSBoost-1000-deep | 82.58% | 0.6407 | −0.0478 |
+
+**Key Observations**:
+
+1. **Performance degradation**: Introducing ±2% chunk-to-chunk material variation reduces the best F1 by 0.048 (−6.9% relative) and accuracy by 6.9 percentage points.
+2. **Same winning architecture**: RUSBoost remains the best approach for both flat and bumpy terrain, confirming its robustness to class imbalance regardless of feature noise level.
+3. **Deeper trees compensate**: On bumpy terrain, increasing tree depth (1000 cycles, deeper splits) partially compensates for the added noise — the flat terrain baseline only needed 500 cycles.
+4. **Realistic scenario impact**: Even modest ±2% material variation significantly challenges classifiers, suggesting real-world deployment will require additional signal processing or spatial filtering.
+5. **Variation sensitivity**: Reducing from ±5% to ±2% improved bumpy terrain F1 from 0.6291 to 0.6407 (+1.8%), confirming that terrain heterogeneity is a primary performance limiter.
+
+### Bumpy Terrain Files
+
+| File | Purpose |
+|------|---------|
+| `BumpyTerrainAnalysis/TrackSimulation_Bumpy.m` | RF simulation with randomized terrain chunks |
+| `BumpyTerrainAnalysis/TrainClassifiers_Bumpy.m` | ML training on bumpy terrain data (7 classifiers) |
+| `BumpyTerrainAnalysis/AdvancedTuning_Bumpy.m` | Hyperparameter optimization (10 experiments) |
+| `BumpyTerrainAnalysis/QuickView_BumpyTerrain.m` | 3D terrain visualization |
+| `BumpyTerrainAnalysis/VisualizeRandomTerrain.m` | Detailed chunk visualization |
+| `BumpyTerrainAnalysis/RunAll_BumpyTerrain.m` | Run entire pipeline sequentially |
+
+---
+
 ## Key Findings
 
-1. **Terrain Classification is Excellent**: NoObject classes achieve F1 > 0.88, with GrassySoil reaching near-perfect 0.997 due to its distinctly high permittivity creating strong Fresnel reflections.
+1. **Terrain Classification is Excellent**: NoObject classes achieve F1 > 0.88 on flat terrain, with GrassySoil reaching near-perfect 0.997 due to its distinctly high permittivity creating strong Fresnel reflections.
 
 2. **Object Detection is Challenging**: Object classes achieve F1 = 0.43–0.49. The fundamental limitation is that only ~6% of positions overlap with objects, creating extreme class imbalance (15:1 ratio).
 
-3. **Best Overall Performance**: RUSBoost classifier achieves **Accuracy = 89.50%** and **Macro F1 = 0.6885** (from TrainClassifiers.m standard run). The highest accuracy achieved was 91.00% (Ensemble Boosted), but with lower F1.
+3. **Best Overall Performance (Flat)**: RUSBoost classifier achieves **Accuracy = 89.50%** and **Macro F1 = 0.6885** on uniform terrain. The highest accuracy achieved was 91.00% (Ensemble Boosted), but with lower F1.
 
-4. **RUSBoost is the Best Approach**: Training directly on imbalanced data with Random Under-Sampling Boosting outperforms oversampling-based approaches (F1 = 0.6885 vs 0.6540 with previous classifiers).
+4. **Best Performance (Bumpy)**: RUSBoost-1000-deep achieves **F1 = 0.6407** and **Accuracy = 82.58%** on ±2% heterogeneous terrain — a realistic drop of 6.9% relative to ideal conditions.
 
-5. **Feature Engineering Helps**: Adding 14 additional statistical features (kurtosis, range, combined sensor stats) improved the best F1 from 0.654 to 0.689 — a 5.3% relative improvement.
+5. **RUSBoost is the Best Approach**: Training directly on imbalanced data with Random Under-Sampling Boosting outperforms oversampling-based approaches in both flat and bumpy scenarios.
 
-6. **Physical Parameters Saturated**: The parameter sweep showed that changing object size, depth, or noise doesn't significantly improve detection — the limiting factor is the inherent difficulty of detecting 30mm-deep voids from surface reflections only.
+6. **Feature Engineering Helps**: Adding 14 additional statistical features (kurtosis, range, combined sensor stats) improved the best F1 from 0.654 to 0.689 — a 5.3% relative improvement.
 
-7. **All Features are Needed**: Feature selection (top-50 by importance) significantly degraded performance (F1=0.60 vs 0.69), indicating the classifier benefits from the full high-dimensional feature space.
+7. **Physical Parameters Saturated**: The parameter sweep showed that changing object size, depth, or noise doesn't significantly improve detection — the limiting factor is the inherent difficulty of detecting 30mm-deep voids from surface reflections only.
+
+8. **All Features are Needed**: Feature selection (top-50 by importance) significantly degraded performance on both flat terrain (F1=0.60 vs 0.69) and bumpy terrain (F1=0.62 vs 0.64).
+
+9. **Terrain Heterogeneity is a Primary Limiter**: Even ±2% material variation causes a 6.9% F1 drop, indicating real-world deployment needs spatial filtering or multi-position averaging to mitigate ground variability.
 
 ---
 
