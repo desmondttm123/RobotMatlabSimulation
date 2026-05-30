@@ -126,6 +126,25 @@ hold on;
 fprintf('Drawing %d chunks x %d layers = %d blocks...\n', ...
     n_chunks_x * n_chunks_y, n_layers, n_chunks_x * n_chunks_y * n_layers);
 
+% --- Solid terrain fill (semi-transparent interior so objects visible) ---
+fill_alpha = 0.4;
+fill_color = [0.50 0.32 0.15];
+% Top surface
+patch([-gs_x gs_x gs_x -gs_x], [track_y_start track_y_start track_y_end track_y_end], ...
+    [0 0 0 0], fill_color, 'FaceAlpha', fill_alpha, 'EdgeColor', 'none');
+% Bottom
+patch([-gs_x gs_x gs_x -gs_x], [track_y_start track_y_start track_y_end track_y_end], ...
+    [-total_depth -total_depth -total_depth -total_depth], fill_color*0.7, 'FaceAlpha', fill_alpha, 'EdgeColor', 'none');
+% Right wall
+patch([gs_x gs_x gs_x gs_x], [track_y_start track_y_end track_y_end track_y_start], ...
+    [0 0 -total_depth -total_depth], fill_color*0.85, 'FaceAlpha', fill_alpha, 'EdgeColor', 'none');
+% Left wall
+patch([-gs_x -gs_x -gs_x -gs_x], [track_y_start track_y_end track_y_end track_y_start], ...
+    [0 0 -total_depth -total_depth], fill_color*0.85, 'FaceAlpha', fill_alpha, 'EdgeColor', 'none');
+% Back wall
+patch([-gs_x gs_x gs_x -gs_x], [track_y_end track_y_end track_y_end track_y_end], ...
+    [0 0 -total_depth -total_depth], fill_color*0.8, 'FaceAlpha', fill_alpha, 'EdgeColor', 'none');
+
 % Top surface faces (layer 1 top)
 for iy = 1:n_chunks_y
     for ix = 1:n_chunks_x
@@ -255,6 +274,43 @@ quiver3(world_pos2(1,1)*1000, world_pos2(1,2)*1000, world_pos2(1,3)*1000, ...
     normal_world(1)*40, normal_world(2)*40, normal_world(3)*40, ...
     'r', 'LineWidth', 2, 'MaxHeadSize', 0.5);
 
+% --- TX Radiation Pattern Lobes ---
+% cos^n(theta) model: n chosen so -3dB beamwidth ~60deg (n ~ 3.5)
+% and ~25 dB drop at 90 deg off boresight
+n_pat = 3.5;
+pat_scale = 350;  % mm - visual radius of main lobe at peak
+n_pts = 30;       % resolution
+
+% Generate pattern in local coords (boresight = -Z)
+theta_pat = linspace(0, pi/2, n_pts);   % 0=boresight, pi/2=broadside
+phi_pat = linspace(0, 2*pi, n_pts);
+[THETA, PHI] = meshgrid(theta_pat, phi_pat);
+
+% Normalized gain: cos^n(theta), clamped
+G_norm = max(cos(THETA), 0).^n_pat;
+
+% Convert to Cartesian in local frame (boresight = -Z direction)
+R_pat = pat_scale * G_norm;
+X_pat = R_pat .* sin(THETA) .* cos(PHI);
+Y_pat = R_pat .* sin(THETA) .* sin(PHI);
+Z_pat = -R_pat .* cos(THETA);  % negative Z = boresight direction
+
+% Rotate pattern to world frame (same rotation as array)
+for ii = 1:numel(X_pat)
+    pt = Rx * [X_pat(ii); Y_pat(ii); Z_pat(ii)];
+    X_pat(ii) = pt(1); Y_pat(ii) = pt(2); Z_pat(ii) = pt(3);
+end
+
+% Plot radiation pattern on Sensor 1 TX
+tx1 = world_pos1(1,:) * 1000;  % mm
+surf(X_pat + tx1(1), Y_pat + tx1(2), Z_pat + tx1(3), G_norm, ...
+    'FaceAlpha', 0.5, 'EdgeColor', 'none', 'FaceColor', [1 0.3 0.1]);
+
+% Plot radiation pattern on Sensor 2 TX
+tx2 = world_pos2(1,:) * 1000;
+surf(X_pat + tx2(1), Y_pat + tx2(2), Z_pat + tx2(3), G_norm, ...
+    'FaceAlpha', 0.5, 'EdgeColor', 'none', 'FaceColor', [1 0.3 0.1]);
+
 % --- Sensor labels ---
 text(world_pos1(1,1)*1000 - 200, world_pos1(1,2)*1000, world_pos1(1,3)*1000 + 200, ...
     'Sensor 1', 'FontSize', 8, 'FontWeight', 'bold', 'HorizontalAlignment', 'right');
@@ -282,7 +338,7 @@ end
 
 % --- Lighting and view ---
 light('Position', [500 -5000 1000]);
-light('Position', [-500 15000 500], 'Style', 'local');
+% Removed local light that caused white glow at far end
 
 xlabel('X (mm)'); ylabel('Y (mm)'); zlabel('Z (mm)');
 % title(sprintf('Bumpy Terrain: 100mm chunks, surface 0-%dmm, depth %dmm, \\epsilon_r ±%d%%', ...
@@ -298,7 +354,7 @@ set(gca, 'Projection', 'orthographic');
 % Examples: view([0,90])=top-down, view([0,0])=front(YZ), view([90,0])=right side(XZ)
 % view([178.9646, 1.2123]);
 
-view([168, 0.8]);
+view([174.6603927156378,2.043555780726723]);
 daspect([1 1 1]);
 ylim([gy_min gy_max]);
 xlim([-1000 1000]);
@@ -307,10 +363,135 @@ hold off;
 
 % Save
 output_dir = 'Results';
+set(gcf, 'Visible', 'on');  % so .fig opens visible when double-clicked
 savefig(gcf, fullfile(output_dir, 'BumpyTerrain_Setup.fig'));
 exportgraphics(gcf, fullfile(output_dir, 'BumpyTerrain_Setup.png'), 'Resolution', 150);
 close(gcf);
 fprintf('BumpyTerrain_Setup.png saved.\n');
+
+%% === LIGHTWEIGHT FIGURE (openable in MATLAB figure viewer) ===
+% Draws every Nth chunk, skips robot STL, keeps sensors + radiation + objects
+fprintf('Generating lightweight .fig (every 10th chunk)...\n');
+figure('Name', 'Bumpy Terrain Setup (Lite)', 'Position', [50, 50, 1400, 900], 'Visible', 'off');
+hold on;
+
+skip = 10;  % draw every 10th chunk (reduces 4000 -> ~40 surface patches)
+chunk_depth = 80;  % mm visible depth per block in lite view
+
+% Solid ground fill (single opaque surface covering the full track at z=0)
+patch([-gs_x gs_x gs_x -gs_x], [track_y_start track_y_start track_y_end track_y_end], ...
+    [0 0 0 0], [0.50 0.32 0.15], 'EdgeColor', 'none');
+% Bottom face
+patch([-gs_x gs_x gs_x -gs_x], [track_y_start track_y_start track_y_end track_y_end], ...
+    [-total_depth -total_depth -total_depth -total_depth], [0.40 0.25 0.12], 'EdgeColor', 'none');
+% Right side wall fill
+patch([gs_x gs_x gs_x gs_x], [track_y_start track_y_end track_y_end track_y_start], ...
+    [0 0 -total_depth -total_depth], [0.45 0.28 0.13], 'EdgeColor', 'none');
+% Left side wall fill
+patch([-gs_x -gs_x -gs_x -gs_x], [track_y_start track_y_end track_y_end track_y_start], ...
+    [0 0 -total_depth -total_depth], [0.45 0.28 0.13], 'EdgeColor', 'none');
+% Back wall fill
+patch([-gs_x gs_x gs_x -gs_x], [track_y_end track_y_end track_y_end track_y_end], ...
+    [0 0 -total_depth -total_depth], [0.42 0.26 0.12], 'EdgeColor', 'none');
+
+% Top surface chunks (sparse, opaque, with visible edges)
+for iy = 1:skip:n_chunks_y
+    for ix = 1:n_chunks_x
+        x0 = x_edges(ix); x1 = x_edges(ix+1);
+        y0 = y_edges(iy); y1 = y_edges(iy+1);
+        z_top = surface_heights(iy, ix);
+        z_bot = z_top - chunk_depth;
+        shade = 0.85 + 0.30 * er_norm_layers{1}(iy, ix);
+        brown = min([0.55, 0.35, 0.17] * shade, 1);
+        
+        % Top face (opaque)
+        patch([x0 x1 x1 x0], [y0 y0 y1 y1], [z_top z_top z_top z_top], ...
+            brown, 'EdgeColor', brown * 0.5, 'LineWidth', 0.5);
+        % Front face (Y = y0)
+        patch([x0 x1 x1 x0], [y0 y0 y0 y0], [z_top z_top z_bot z_bot], ...
+            brown * 0.7, 'EdgeColor', brown * 0.4, 'LineWidth', 0.3);
+        % Right face (X = x1)
+        patch([x1 x1 x1 x1], [y0 y1 y1 y0], [z_top z_top z_bot z_bot], ...
+            brown * 0.8, 'EdgeColor', brown * 0.4, 'LineWidth', 0.3);
+    end
+end
+
+% Track boundary outline
+plot3([-gs_x gs_x gs_x -gs_x -gs_x], ...
+      [track_y_start track_y_start track_y_end track_y_end track_y_start], ...
+      [0 0 0 0 0], '-', 'Color', [0.4 0.25 0.1], 'LineWidth', 1.5);
+
+% Front wall (only layer 1, sparse)
+for ix = 1:n_chunks_x
+    x0 = x_edges(ix); x1 = x_edges(ix+1);
+    z_top = surface_heights(1, ix);
+    shade = 0.85 + 0.30 * er_norm_layers{1}(1, ix);
+    brown = min([0.55, 0.35, 0.17] * shade, 1) * 0.75;
+    patch([x0 x1 x1 x0], [track_y_start track_y_start track_y_start track_y_start], ...
+        [z_top z_top -total_depth -total_depth], brown, 'EdgeColor', brown*0.7, 'LineWidth', 0.3);
+end
+
+% Embedded objects
+obj_color = [1.0 0.85 0.0]; obj_edge = [0.8 0.6 0.0];
+for oi = 1:length(obj_y_centers)
+    oy = obj_y_centers(oi);
+    patch([-obj_w obj_w obj_w -obj_w], [oy-obj_l oy-obj_l oy+obj_l oy+obj_l], ...
+        [obj_z_top obj_z_top obj_z_top obj_z_top], obj_color, 'FaceAlpha', 0.95, 'EdgeColor', obj_edge, 'LineWidth', 1.5);
+    patch([-obj_w obj_w obj_w -obj_w], [oy-obj_l oy-obj_l oy-obj_l oy-obj_l], ...
+        [obj_z_top obj_z_top obj_z_bot obj_z_bot], obj_color*0.85, 'FaceAlpha', 0.95, 'EdgeColor', obj_edge, 'LineWidth', 1.5);
+    patch([obj_w obj_w obj_w obj_w], [oy-obj_l oy+obj_l oy+obj_l oy-obj_l], ...
+        [obj_z_top obj_z_top obj_z_bot obj_z_bot], obj_color*0.9, 'FaceAlpha', 0.95, 'EdgeColor', obj_edge, 'LineWidth', 1.5);
+    text(-gs_x - 100, oy, 100, obj_names{oi}, 'FontSize', 8, 'FontWeight', 'bold', ...
+        'Color', [0.85 0.6 0.0], 'HorizontalAlignment', 'right');
+end
+
+% PCB boards
+fill3(bc1(:,1)*1000, bc1(:,2)*1000, bc1(:,3)*1000, ...
+    [0.1 0.6 0.1], 'FaceAlpha', 0.6, 'EdgeColor', [0 0.4 0], 'LineWidth', 2);
+fill3(bc2(:,1)*1000, bc2(:,2)*1000, bc2(:,3)*1000, ...
+    [0.1 0.6 0.1], 'FaceAlpha', 0.6, 'EdgeColor', [0 0.4 0], 'LineWidth', 2);
+
+% Sensor antennas
+scatter3(world_pos1(2:end,1)*1000, world_pos1(2:end,2)*1000, world_pos1(2:end,3)*1000, 30, 'b', 'filled');
+scatter3(world_pos1(1,1)*1000, world_pos1(1,2)*1000, world_pos1(1,3)*1000, 100, 'r', '^', 'filled');
+scatter3(world_pos2(2:end,1)*1000, world_pos2(2:end,2)*1000, world_pos2(2:end,3)*1000, 30, 'b', 'filled');
+scatter3(world_pos2(1,1)*1000, world_pos2(1,2)*1000, world_pos2(1,3)*1000, 100, 'r', '^', 'filled');
+
+% Array normals
+quiver3(world_pos1(1,1)*1000, world_pos1(1,2)*1000, world_pos1(1,3)*1000, ...
+    normal_world(1)*40, normal_world(2)*40, normal_world(3)*40, 'r', 'LineWidth', 2, 'MaxHeadSize', 0.5);
+quiver3(world_pos2(1,1)*1000, world_pos2(1,2)*1000, world_pos2(1,3)*1000, ...
+    normal_world(1)*40, normal_world(2)*40, normal_world(3)*40, 'r', 'LineWidth', 2, 'MaxHeadSize', 0.5);
+
+% Radiation pattern lobes
+surf(X_pat + tx1(1), Y_pat + tx1(2), Z_pat + tx1(3), G_norm, ...
+    'FaceAlpha', 0.5, 'EdgeColor', 'none', 'FaceColor', [1 0.3 0.1]);
+surf(X_pat + tx2(1), Y_pat + tx2(2), Z_pat + tx2(3), G_norm, ...
+    'FaceAlpha', 0.5, 'EdgeColor', 'none', 'FaceColor', [1 0.3 0.1]);
+
+% Labels
+text(world_pos1(1,1)*1000 - 200, world_pos1(1,2)*1000, world_pos1(1,3)*1000 + 200, ...
+    'Sensor 1', 'FontSize', 8, 'FontWeight', 'bold', 'HorizontalAlignment', 'right');
+text(world_pos2(1,1)*1000 + 200, world_pos2(1,2)*1000, world_pos2(1,3)*1000 + 200, ...
+    'Sensor 2', 'FontSize', 8, 'FontWeight', 'bold');
+
+% View settings (same as full figure, no light to avoid specular glow)
+xlabel('X (mm)'); ylabel('Y (mm)'); zlabel('Z (mm)');
+title('RO4 - Burried Object Simulation with Uneven Terrain (Lite)');
+grid on;
+set(gca, 'Projection', 'orthographic');
+view([174.6603927156378,2.043555780726723]);
+daspect([1 1 1]);
+ylim([gy_min gy_max]);
+xlim([-1000 1000]);
+zlim([-total_depth-50 800]);
+hold off;
+
+set(gcf, 'Visible', 'on');  % so .fig opens visible when double-clicked
+savefig(gcf, fullfile(output_dir, 'BumpyTerrain_Setup_Lite.fig'));
+exportgraphics(gcf, fullfile(output_dir, 'BumpyTerrain_Setup_Lite.png'), 'Resolution', 150);
+close(gcf);
+fprintf('BumpyTerrain_Setup_Lite.fig saved (lightweight - openable in figure viewer).\n');
 
 %% === ZOOMED DETAIL FIGURE ===
 figure('Name', 'Terrain Detail', 'Position', [50, 50, 1000, 600], 'Visible', 'off');
@@ -380,6 +561,7 @@ zlim([-total_depth-20 surface_z_max+20]);
 ylim([zoom_y_start zoom_y_end]);
 hold off;
 
+set(gcf, 'Visible', 'on');  % so .fig opens visible when double-clicked
 savefig(gcf, fullfile(output_dir, 'BumpyTerrain_Detail.fig'));
 exportgraphics(gcf, fullfile(output_dir, 'BumpyTerrain_Detail.png'), 'Resolution', 150);
 close(gcf);

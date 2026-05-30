@@ -1,0 +1,28 @@
+=== ARCHITECTURE COMPARISON RESULTS ===
+Date: 30-May-2026 13:18:26
+
+Configuration:
+  Frequency: 2.45 GHz
+  Sensor separation: 180 mm
+  Array: 4x8 = 32 RX
+  Track: 2101 positions, 3 terrains
+  Terrain: bumpy (±2% variation, 0-10mm surface)
+  MLP: [128 64 32], 2000 iterations
+
+RESULTS:
+  Criss-Cross Accuracy:  78.25%
+  Same-Antenna Accuracy: 28.73%
+  Improvement:           +49.52%
+
+Ground Scan Width:
+  Criss-Cross: 180 mm (TX-RX on different sensors)
+  Same-Antenna: 100 mm (TX-RX on same sensor)
+
+Per-Class Accuracy:
+  Class                 Criss-Cross  Same-Antenna  Improvement
+  DrySand_NoObject       75.19%       29.97%      +45.22%
+  DrySand_Object         28.12%        3.12%      +25.00%
+  GrassySoil_NoObject   100.00%       30.93%      +69.07%
+  GrassySoil_Object      28.12%        0.00%      +28.12%
+  Rocks_NoObject         70.62%       31.70%      +38.92%
+  Rocks_Object           45.45%        6.06%      +39.39%

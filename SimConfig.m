@@ -18,7 +18,7 @@ cfg.sensor1_x = -90;            % mm (Sensor 1 X position)
 cfg.sensor2_x = 90;             % mm (Sensor 2 X position)
 
 %% Track
-cfg.track_y_start = 0;          % mm
+cfg.track_y_start = -1000;      % mm
 cfg.track_y_end = 20000;        % mm (20 meters)
 cfg.track_y_step = 10;          % mm (step size)
 cfg.track_width = 2000;         % mm (total ground width in X)
