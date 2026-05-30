@@ -274,42 +274,48 @@ quiver3(world_pos2(1,1)*1000, world_pos2(1,2)*1000, world_pos2(1,3)*1000, ...
     normal_world(1)*40, normal_world(2)*40, normal_world(3)*40, ...
     'r', 'LineWidth', 2, 'MaxHeadSize', 0.5);
 
-% --- TX Radiation Pattern Lobes ---
-% cos^n(theta) model: n chosen so -3dB beamwidth ~60deg (n ~ 3.5)
-% and ~25 dB drop at 90 deg off boresight
-n_pat = 3.5;
-pat_scale = 350;  % mm - visual radius of main lobe at peak
-n_pts = 30;       % resolution
+% --- Ray Tracing (Communications Toolbox SBR) ---
+output_dir = 'Results';
+if ~exist(output_dir, 'dir'), mkdir(output_dir); end
+% Create small terrain STL for ray tracing (flat ground plane)
+rt_stl_path = fullfile(output_dir, 'rt_terrain.stl');
+gnd_hw = 1.5;  % meters half-width
+V_rt = [-gnd_hw -gnd_hw 0; gnd_hw -gnd_hw 0; gnd_hw gnd_hw 0; -gnd_hw gnd_hw 0;
+        -gnd_hw -gnd_hw -0.05; gnd_hw -gnd_hw -0.05; gnd_hw gnd_hw -0.05; -gnd_hw gnd_hw -0.05];
+F_rt = [1 2 3; 1 3 4; 5 7 6; 5 8 7; 1 5 6; 1 6 2; 4 3 7; 4 7 8; 1 4 8; 1 8 5; 2 6 7; 2 7 3];
+stlwrite(triangulation(F_rt, V_rt), rt_stl_path);
 
-% Generate pattern in local coords (boresight = -Z)
-theta_pat = linspace(0, pi/2, n_pts);   % 0=boresight, pi/2=broadside
-phi_pat = linspace(0, 2*pi, n_pts);
-[THETA, PHI] = meshgrid(theta_pat, phi_pat);
+fprintf('Ray tracing (SBR)...\n');
+viewer = siteviewer("SceneModel", rt_stl_path, "ShowOrigin", false);
+pm = propagationModel("raytracing", "CoordinateSystem","cartesian", ...
+    "Method","sbr", "SurfaceMaterial","custom", ...
+    "SurfaceMaterialPermittivity", cfg.terrains(1).er, ...
+    "SurfaceMaterialConductivity", cfg.terrains(1).sigma);
+pm.MaxNumReflections = 2;
 
-% Normalized gain: cos^n(theta), clamped
-G_norm = max(cos(THETA), 0).^n_pat;
-
-% Convert to Cartesian in local frame (boresight = -Z direction)
-R_pat = pat_scale * G_norm;
-X_pat = R_pat .* sin(THETA) .* cos(PHI);
-Y_pat = R_pat .* sin(THETA) .* sin(PHI);
-Z_pat = -R_pat .* cos(THETA);  % negative Z = boresight direction
-
-% Rotate pattern to world frame (same rotation as array)
-for ii = 1:numel(X_pat)
-    pt = Rx * [X_pat(ii); Y_pat(ii); Z_pat(ii)];
-    X_pat(ii) = pt(1); Y_pat(ii) = pt(2); Z_pat(ii) = pt(3);
+% TX/RX sites (criss-cross: TX1->RX2, TX2->RX1)
+tx1_site = txsite("cartesian", "AntennaPosition", world_pos1(1,:)', "TransmitterFrequency", cfg.freq);
+tx2_site = txsite("cartesian", "AntennaPosition", world_pos2(1,:)', "TransmitterFrequency", cfg.freq);
+rx1_sites = rxsite.empty; rx2_sites = rxsite.empty;
+for ri = 2:nTotal
+    rx1_sites(ri-1) = rxsite("cartesian", "AntennaPosition", world_pos1(ri,:)');
+    rx2_sites(ri-1) = rxsite("cartesian", "AntennaPosition", world_pos2(ri,:)');
 end
+rays_tx1_rx2 = raytrace(tx1_site, rx2_sites, pm);
+rays_tx2_rx1 = raytrace(tx2_site, rx1_sites, pm);
+close(viewer);
 
-% Plot radiation pattern on Sensor 1 TX
-tx1 = world_pos1(1,:) * 1000;  % mm
-surf(X_pat + tx1(1), Y_pat + tx1(2), Z_pat + tx1(3), G_norm, ...
-    'FaceAlpha', 0.5, 'EdgeColor', 'none', 'FaceColor', [1 0.3 0.1]);
+n_rays = 0;
+for ri = 1:numel(rays_tx1_rx2), n_rays = n_rays + numel(rays_tx1_rx2{ri}); end
+for ri = 1:numel(rays_tx2_rx1), n_rays = n_rays + numel(rays_tx2_rx1{ri}); end
+fprintf('  %d rays traced\n', n_rays);
 
-% Plot radiation pattern on Sensor 2 TX
+% Draw rays (TX1->RX2 = orange, TX2->RX1 = blue)
+draw_rays_local(rays_tx1_rx2, [1.0 0.4 0.1], 0.5, 1.2);
+draw_rays_local(rays_tx2_rx1, [0.1 0.4 1.0], 0.5, 1.2);
+
+tx1 = world_pos1(1,:) * 1000;
 tx2 = world_pos2(1,:) * 1000;
-surf(X_pat + tx2(1), Y_pat + tx2(2), Z_pat + tx2(3), G_norm, ...
-    'FaceAlpha', 0.5, 'EdgeColor', 'none', 'FaceColor', [1 0.3 0.1]);
 
 % --- Sensor labels ---
 text(world_pos1(1,1)*1000 - 200, world_pos1(1,2)*1000, world_pos1(1,3)*1000 + 200, ...
@@ -463,11 +469,9 @@ quiver3(world_pos1(1,1)*1000, world_pos1(1,2)*1000, world_pos1(1,3)*1000, ...
 quiver3(world_pos2(1,1)*1000, world_pos2(1,2)*1000, world_pos2(1,3)*1000, ...
     normal_world(1)*40, normal_world(2)*40, normal_world(3)*40, 'r', 'LineWidth', 2, 'MaxHeadSize', 0.5);
 
-% Radiation pattern lobes
-surf(X_pat + tx1(1), Y_pat + tx1(2), Z_pat + tx1(3), G_norm, ...
-    'FaceAlpha', 0.5, 'EdgeColor', 'none', 'FaceColor', [1 0.3 0.1]);
-surf(X_pat + tx2(1), Y_pat + tx2(2), Z_pat + tx2(3), G_norm, ...
-    'FaceAlpha', 0.5, 'EdgeColor', 'none', 'FaceColor', [1 0.3 0.1]);
+% Ray tracing (reuse computed rays)
+draw_rays_local(rays_tx1_rx2, [1.0 0.4 0.1], 0.5, 1.2);
+draw_rays_local(rays_tx2_rx1, [0.1 0.4 1.0], 0.5, 1.2);
 
 % Labels
 text(world_pos1(1,1)*1000 - 200, world_pos1(1,2)*1000, world_pos1(1,3)*1000 + 200, ...
@@ -622,3 +626,27 @@ hold off;
 exportgraphics(gcf, fullfile(output_dir, 'BumpyTerrain_Profile.png'), 'Resolution', 150);
 close(gcf);
 fprintf('BumpyTerrain_Profile.png saved.\n');
+
+%% ===== LOCAL FUNCTION =====
+function draw_rays_local(ray_cell, color, alpha, lw)
+    for ri = 1:numel(ray_cell)
+        ray_set = ray_cell{ri};
+        for rj = 1:numel(ray_set)
+            ray = ray_set(rj);
+            tx_loc = ray.TransmitterLocation(:)' * 1000;
+            rx_loc = ray.ReceiverLocation(:)' * 1000;
+            if ray.NumInteractions == 0
+                path_pts = [tx_loc; rx_loc];
+            else
+                interactions = ray.Interactions;
+                int_pts = zeros(ray.NumInteractions, 3);
+                for ki = 1:ray.NumInteractions
+                    int_pts(ki,:) = interactions(ki).Location(:)' * 1000;
+                end
+                path_pts = [tx_loc; int_pts; rx_loc];
+            end
+            plot3(path_pts(:,1), path_pts(:,2), path_pts(:,3), '-', ...
+                'Color', [color alpha], 'LineWidth', lw);
+        end
+    end
+end
